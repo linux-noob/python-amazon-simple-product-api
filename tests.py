@@ -84,7 +84,7 @@ class TestAmazonApi(TestCase):
     def test_amazon_api_defaults_to_US(self):
         """Test Amazon API defaults to the US store."""
         amazon = AmazonAPI(AMAZON_ACCESS_KEY, AMAZON_SECRET_KEY,
-            AMAZON_ASSOC_TAG)
+                           AMAZON_ASSOC_TAG)
         assert_equals(amazon.api.Region, "US")
 
     def test_search_amazon_uk(self):
@@ -104,6 +104,22 @@ class TestAmazonApi(TestCase):
 
         is_gbp = 'GBP' in currencies
         assert_true(is_gbp, "Currency is not GBP, cannot be Amazon UK, though")
+
+    def test_offer_url_amazon_de(self):
+        """Test Product Lookup on Amazon DE
+
+        The test fails if no results were returned.
+        """
+        amazon = AmazonAPI(AMAZON_ACCESS_KEY, AMAZON_SECRET_KEY,
+                           AMAZON_ASSOC_TAG, region="DE")
+        assert_equals(amazon.api.Region, "DE", "Region has not been set to UK")
+
+        product = amazon.lookup(responsegroup="Large", ItemId="B003JY60C6")
+        assert_equals(product.title,
+                      'Emu Angels, Damen Stiefel')
+        assert_equals(product.offer_url,
+                      'http://www.amazon.de/dp/B003JY60C6/?tag={0}'
+                      .format(AMAZON_ASSOC_TAG))
 
     def test_similarity_lookup(self):
         """Test Similarity Lookup.

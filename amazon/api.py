@@ -19,7 +19,7 @@ import bottlenose
 from lxml import objectify, etree
 
 
-AMAZON_ASSOCIATES_BASE_URL = 'http://www.amazon.com/dp/'
+AMAZON_ASSOCIATES_BASE_URL = 'http://www.amazon.{TLD}/dp/'
 
 
 class AmazonException(Exception):
@@ -59,6 +59,8 @@ class SimilartyLookupException(AmazonException):
 
 
 class AmazonAPI(object):
+    """Amazon API Proxy
+    """
     def __init__(self, aws_key, aws_secret, aws_associate_tag, region="US"):
         """Initialize an Amazon API Proxy.
 
@@ -74,10 +76,11 @@ class AmazonAPI(object):
             CA, CN, DE, ES, FR, IT, JP, UK, US at the time of writing.
         """
         self.api = bottlenose.Amazon(aws_key, aws_secret, aws_associate_tag,
-            Region=region)
+                                     Region=region)
         self.aws_associate_tag = aws_associate_tag
+        self.region = region
 
-    def lookup(self, ResponseGroup="Large", **kwargs):
+    def lookup(self, responsegroup="Large", **kwargs):
         """Lookup an Amazon Product.
 
         :return:
@@ -85,7 +88,7 @@ class AmazonAPI(object):
             or a list of  :class:`~.AmazonProduct` instances if multiple
             items where returned.
         """
-        response = self.api.ItemLookup(ResponseGroup=ResponseGroup, **kwargs)
+        response = self.api.ItemLookup(ResponseGroup=responsegroup, **kwargs)
         root = objectify.fromstring(response)
         if root.Items.Request.IsValid == 'False':
             code = root.Items.Request.Errors.Error.Code
@@ -97,12 +100,16 @@ class AmazonAPI(object):
                 etree.tostring(root, pretty_print=True)))
         if len(root.Items.Item) > 1:
             return [AmazonProduct(item,
-                self.aws_associate_tag, self) for item in root.Items.Item]
+                                  self.aws_associate_tag,
+                                  self,
+                                  region=self.region) for item in root.Items.Item]
         else:
-            return AmazonProduct(
-                root.Items.Item, self.aws_associate_tag, self)
+            return AmazonProduct(root.Items.Item,
+                                 self.aws_associate_tag,
+                                 self,
+                                 region=self.region)
 
-    def similarity_lookup(self, ResponseGroup="Large", **kwargs):
+    def similarity_lookup(self, responsegroup="Large", **kwargs):
         """Similarty Lookup.
 
         Returns up to ten products that are similar to all items
@@ -111,7 +118,8 @@ class AmazonAPI(object):
         Example:
             >>> api.similarity_lookup(ItemId='B002L3XLBO,B000LQTBKI')
         """
-        response = self.api.SimilarityLookup(ResponseGroup=ResponseGroup, **kwargs)
+        response = self.api.SimilarityLookup(
+            ResponseGroup=responsegroup, **kwargs)
         root = objectify.fromstring(response)
         if root.Items.Request.IsValid == 'False':
             code = root.Items.Request.Errors.Error.Code
@@ -120,7 +128,7 @@ class AmazonAPI(object):
                 "Amazon Similarty Lookup Error: '{0}', '{1}'".format(
                     code, msg))
         return [AmazonProduct(item, self.aws_associate_tag, self.api)
-            for item in getattr(root.Items, 'Item', [])]
+                for item in getattr(root.Items, 'Item', [])]
 
     def search(self, **kwargs):
         """Search.
@@ -191,7 +199,7 @@ class AmazonSearch(object):
         except NoMorePages:
             pass
 
-    def _query(self, ResponseGroup="Large", **kwargs):
+    def _query(self, responsegroup="Large", **kwargs):
         """Query.
 
         Query Amazon search and check for errors.
@@ -199,7 +207,7 @@ class AmazonSearch(object):
         :return:
             An lxml root element.
         """
-        response = self.api.ItemSearch(ResponseGroup=ResponseGroup, **kwargs)
+        response = self.api.ItemSearch(ResponseGroup=responsegroup, **kwargs)
         root = objectify.fromstring(response)
         if root.Items.Request.IsValid == 'False':
             code = root.Items.Request.Errors.Error.Code
@@ -216,7 +224,7 @@ class AmazonProduct(object):
     """A wrapper class for an Amazon product.
     """
 
-    def __init__(self, item, aws_associate_tag, api, *args):
+    def __init__(self, item, aws_associate_tag, api, **kwargs):
         """Initialize an Amazon Product Proxy.
 
         :param item:
@@ -226,6 +234,7 @@ class AmazonProduct(object):
         self.aws_associate_tag = aws_associate_tag
         self.api = api
         self.parent = None
+        self.kwargs = kwargs
 
     def to_string(self):
         """Convert Item XML to string.
@@ -328,7 +337,8 @@ class AmazonProduct(object):
             Offer URL (string).
         """
         return "{0}{1}/?tag={2}".format(
-            AMAZON_ASSOCIATES_BASE_URL,
+            AMAZON_ASSOCIATES_BASE_URL.format(
+                TLD=self.kwargs["region"] if self.kwargs["region"] != "US" else "com").lower(),
             self.asin,
             self.aws_associate_tag)
 
@@ -414,7 +424,7 @@ class AmazonProduct(object):
             ean_list = self._safe_get_element_text('ItemAttributes.EANList')
             if ean_list:
                 ean = self._safe_get_element_text('EANListElement',
-                    root=ean_list[0])
+                                                  root=ean_list[0])
         return ean
 
     @property
@@ -429,7 +439,7 @@ class AmazonProduct(object):
             upc_list = self._safe_get_element_text('ItemAttributes.UPCList')
             if upc_list:
                 upc = self._safe_get_element_text('UPCListElement',
-                    root=upc_list[0])
+                                                  root=upc_list[0])
         return upc
 
     @property
